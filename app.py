@@ -38,7 +38,7 @@ if 'last_draw' not in st.session_state:
 if 'polygon_drawn' not in st.session_state:
     st.session_state['polygon_drawn'] = False
 
-print("Session state:", st.session_state)  # Debug print
+print("Initial session state:", st.session_state)  # Debug print
 
 # Check if a new polygon has been drawn
 if st_map is not None:
@@ -57,6 +57,7 @@ print("Updated session state:", st.session_state)  # Debug print
 # Add a button to start the search
 if st.session_state['polygon_drawn']:
     if st.button("Search for features in the drawn area"):
+        print("Search button clicked")  # Debug print
         last_draw = st.session_state['last_draw']
         print("Searching for features in:", last_draw)  # Debug print
         # Extract coordinates from drawn polygon
