@@ -179,6 +179,6 @@ if st.session_state['features']:
         folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
     
     # Display the updated map
-    st_folium(st.session_state['map'], width=700, height=500)
+    #st_folium(st.session_state['map'], width=700, height=500)
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
