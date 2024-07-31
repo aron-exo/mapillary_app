@@ -70,8 +70,19 @@ def get_image_and_detection_data(image_id):
 
 # Function to draw detections on image
 def draw_detections_on_image(image_url, detections):
-    response = requests.get(image_url)
-    img = Image.open(io.BytesIO(response.content))
+    if not image_url or image_url == '#':
+        return None
+    
+    try:
+        response = requests.get(image_url)
+        response.raise_for_status()  # This will raise an exception for 4xx and 5xx status codes
+        img = Image.open(io.BytesIO(response.content))
+    except requests.RequestException as e:
+        print(f"Error fetching image: {e}")
+        return None
+    except IOError as e:
+        print(f"Error opening image: {e}")
+        return None
     
     fig, ax = plt.subplots()
     ax.imshow(img)
@@ -156,14 +167,18 @@ if st.session_state['features']:
         <h3>Feature Information</h3>
         <p><strong>ID:</strong> {feature['id']}</p>
         <p><strong>Value:</strong> {feature['object_value']}</p>
-        <img src="{image_with_detections}" style="width:100%;max-width:500px;">
         """
+        
+        if image_with_detections:
+            popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
+        else:
+            popup_content += '<p>Image not available</p>'
         
         iframe = folium.IFrame(html=popup_content, width=550, height=400)
         popup = folium.Popup(iframe, max_width=550)
         folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
     
     # Display the updated map
-    st_folium(st.session_state['map'], width=700, height=500)
+    #st_folium(st.session_state['map'], width=700, height=500)
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
