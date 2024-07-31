@@ -5,7 +5,7 @@ from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
 import base64
-from folium.plugins import MarkerCluster
+from folium.plugins import MarkerCluster, Draw
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
@@ -25,11 +25,14 @@ st.title("Mapillary Feature Explorer")
 # Initialize session state
 if 'map' not in st.session_state:
     st.session_state['map'] = folium.Map(location=[37.7749, -122.4194], zoom_start=12)
-    draw = folium.plugins.Draw(export=True)
+    draw = Draw(export=True)
     draw.add_to(st.session_state['map'])
 
 if 'features' not in st.session_state:
     st.session_state['features'] = []
+
+if 'search_clicked' not in st.session_state:
+    st.session_state['search_clicked'] = False
 
 # Function to get image and detection data
 def get_image_and_detection_data(image_id):
@@ -140,6 +143,7 @@ if st_map is not None and 'all_drawings' in st_map:
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
     if st.button("Search for features in the drawn area"):
+        st.session_state['search_clicked'] = True
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
@@ -148,39 +152,46 @@ if st.session_state.get('polygon_drawn', False):
         # Get features within the bounding box
         st.session_state['features'] = get_features_within_bbox(bounds)
         
-        # Add markers to the map
-        marker_cluster = MarkerCluster().add_to(st.session_state['map'])
-        for feature in st.session_state['features']:
-            geom = feature['geometry']
-            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-            image_data = feature.get('image_data', {})
-            jpeg_url = image_data.get('jpeg_url', '#')
-            detections = image_data.get('detections', [])
-            
-            # Draw detections on image
-            image_with_detections = draw_detections_on_image(jpeg_url, detections)
-            
-            popup_content = f"""
-            <h3>Feature Information</h3>
-            <p><strong>ID:</strong> {feature['id']}</p>
-            <p><strong>Value:</strong> {feature['object_value']}</p>
-            """
-            
-            if image_with_detections:
-                popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
-            else:
-                popup_content += '<p>Image not available</p>'
-            
-            iframe = folium.IFrame(html=popup_content, width=550, height=400)
-            popup = folium.Popup(iframe, max_width=550)
-            folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
-        
-        # Update the map in the session state
-        st.session_state['map'] = st.session_state['map']
-        
-        # Rerun the app to display the updated map
-        st.experimental_rerun()
-        
         st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
+
+# Display features and add markers to the map
+if st.session_state['search_clicked'] and st.session_state['features']:
+    # Clear existing markers
+    st.session_state['map'] = folium.Map(location=[37.7749, -122.4194], zoom_start=12)
+    draw = Draw(export=True)
+    draw.add_to(st.session_state['map'])
+    
+    marker_cluster = MarkerCluster().add_to(st.session_state['map'])
+    for feature in st.session_state['features']:
+        geom = feature['geometry']
+        coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+        image_data = feature.get('image_data', {})
+        jpeg_url = image_data.get('jpeg_url', '#')
+        detections = image_data.get('detections', [])
+        
+        # Draw detections on image
+        image_with_detections = draw_detections_on_image(jpeg_url, detections)
+        
+        popup_content = f"""
+        <h3>Feature Information</h3>
+        <p><strong>ID:</strong> {feature['id']}</p>
+        <p><strong>Value:</strong> {feature['object_value']}</p>
+        """
+        
+        if image_with_detections:
+            popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
+        else:
+            popup_content += '<p>Image not available</p>'
+        
+        iframe = folium.IFrame(html=popup_content, width=550, height=400)
+        popup = folium.Popup(iframe, max_width=550)
+        folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
+    
+    # Display the updated map
+    st_folium(st.session_state['map'], width=700, height=500)
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
+
+# Reset search_clicked state
+if st.session_state['search_clicked']:
+    st.session_state['search_clicked'] = False
