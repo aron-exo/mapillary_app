@@ -109,25 +109,31 @@ if st.session_state.get('polygon_drawn', False):
 # Display features and add markers to the map
 if st.session_state['features']:
     for feature in st.session_state['features']:
-        st.write(feature)
         geom = feature['geometry']
         coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        image_data = feature.get('image_data', {})
-        jpeg_url = image_data.get('jpeg_url', '#')
-        detections = image_data.get('detections', [])
-        
-        popup_content = f"""
-        ID: {feature['id']}<br>
-        Value: {feature['object_value']}<br>
-        <a href="{jpeg_url}" target="_blank">View Image</a><br>
-        Detections:<br>
-        """
-        for detection in detections:
-            popup_content += f"- {detection['value']}<br>"
-        
-        folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
+        folium.Marker(location=coords).add_to(st.session_state['map'])
     
     # Display the updated map
     st_folium(st.session_state['map'], width=700, height=500)
+    
+    # Display feature information
+    st.subheader("Found Features:")
+    for i, feature in enumerate(st.session_state['features']):
+        st.write(f"Feature {i+1}:")
+        st.write(f"ID: {feature['id']}")
+        st.write(f"Value: {feature['object_value']}")
+        
+        image_data = feature.get('image_data', {})
+        jpeg_url = image_data.get('jpeg_url')
+        if jpeg_url:
+            st.write(f"[View Image]({jpeg_url})")
+        
+        detections = image_data.get('detections', [])
+        if detections:
+            st.write("Detections:")
+            for detection in detections:
+                st.write(f"- {detection['value']}")
+        
+        st.write("---")
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
