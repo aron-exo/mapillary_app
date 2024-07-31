@@ -36,31 +36,31 @@ if 'last_draw' in st.session_state:
 else:
     last_draw = None
 
-# Check if 'last_draw' key exists in st_map
-if 'last_draw' in st_map:
+# Check if st_map is not None and if 'last_draw' exists in st_map
+if st_map is not None and 'last_draw' in st_map:
     if st_map['last_draw'] != last_draw:
         st.session_state['last_draw'] = st_map['last_draw']
         last_draw = st_map['last_draw']
-
-if last_draw is not None:
-    if st.button("Query Features"):
-        # Extract coordinates from drawn polygon
-        geom = shape(last_draw['geometry'])
-        bounds = geom.bounds  # (minx, miny, maxx, maxy)
-
-        # Get features within the bounding box
-        features = get_features_within_bbox(bounds)
-
-        # Add features to the map with pop-ups
-        for feature in features:
-            geom = feature['geometry']
-            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-            image_url = f"https://graph.mapillary.com/{feature['id']}?access_token={mly_key}&fields=thumb_original_url"
-            response = requests.get(image_url)
-            image_data = response.json()
-            thumb_url = image_data.get('thumb_original_url', '#')
-            popup_content = f"<a href='{thumb_url}' target='_blank'>View Image</a>"
-            folium.Marker(location=coords, popup=popup_content).add_to(m)
-
-        # Display the updated map
-        st_folium(m, width=700, height=500)
+        if last_draw is not None:
+            # Extract coordinates from drawn polygon
+            geom = shape(last_draw['geometry'])
+            bounds = geom.bounds  # (minx, miny, maxx, maxy)
+            
+            # Get features within the bounding box
+            features = get_features_within_bbox(bounds)
+            
+            # Add features to the map with pop-ups
+            for feature in features:
+                geom = feature['geometry']
+                coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+                image_url = f"https://graph.mapillary.com/{feature['id']}?access_token={mly_key}&fields=thumb_original_url"
+                response = requests.get(image_url)
+                image_data = response.json()
+                thumb_url = image_data.get('thumb_original_url', '#')
+                popup_content = f"<a href='{thumb_url}' target='_blank'>View Image</a>"
+                folium.Marker(location=coords, popup=popup_content).add_to(m)
+            
+            # Display the updated map
+            st_folium(m, width=700, height=500)
+else:
+    st.write("Draw a polygon on the map to see features.")
