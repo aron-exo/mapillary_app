@@ -4,6 +4,8 @@ import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
+import io
+import zipfile
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -19,9 +21,6 @@ if 'map' not in st.session_state:
 
 if 'features' not in st.session_state:
     st.session_state['features'] = []
-
-if 'image_urls' not in st.session_state:
-    st.session_state['image_urls'] = []
 
 # Function to get image URL for a feature
 def get_image_url(feature_id):
@@ -58,6 +57,30 @@ def get_features_within_bbox(bbox):
     
     return features
 
+# Function to download images and create a zip file
+def create_image_zip(features):
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for i, feature in enumerate(features):
+            image_url = feature.get('image_url')
+            if image_url:
+                try:
+                    response = requests.get(image_url)
+                    if response.status_code == 200:
+                        image_data = response.content
+                        file_name = f"feature_{i+1}_{feature['id']}.jpg"
+                        zip_file.writestr(file_name, image_data)
+                        st.write(f"Added {file_name} to zip")
+                    else:
+                        st.write(f"Failed to download image for feature {i+1} ({feature['id']})")
+                except Exception as e:
+                    st.write(f"Error downloading image for feature {i+1} ({feature['id']}): {str(e)}")
+            else:
+                st.write(f"No image URL for feature {i+1} ({feature['id']})")
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
 # Display the map
 st_map = st_folium(st.session_state['map'], width=700, height=500)
 
@@ -72,7 +95,7 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features and get image URLs"):
+    if st.button("Search for features and download images"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
@@ -84,17 +107,16 @@ if st.session_state.get('polygon_drawn', False):
         st.session_state['features'] = features
         st.success(f"Found {len(features)} features in the selected area.")
 
-        # Create list of image URLs
-        image_urls = []
-        for i, feature in enumerate(features):
-            feature_id = feature['id']
-            image_url = feature.get('image_url')
-            if image_url:
-                image_urls.append(f"Feature {i+1} ({feature_id}): {image_url}")
-            else:
-                image_urls.append(f"Feature {i+1} ({feature_id}): No image URL found")
+        # Create zip file with images
+        zip_buffer = create_image_zip(features)
         
-        st.session_state['image_urls'] = image_urls
+        # Offer the zip file for download
+        st.download_button(
+            label="Download Images",
+            data=zip_buffer,
+            file_name="mapillary_images.zip",
+            mime="application/zip"
+        )
 
         # Display features and add markers to the map
         for feature in features:
@@ -111,22 +133,5 @@ if st.session_state.get('polygon_drawn', False):
         # Display the updated map
         st_folium(st.session_state['map'], width=700, height=500)
 
-# Display image URLs
-if st.session_state['image_urls']:
-    st.subheader("Image URLs:")
-    for url in st.session_state['image_urls']:
-        st.write(url)
-    
-    # Create a text file with image URLs
-    url_text = "\n".join(st.session_state['image_urls'])
-    
-    # Offer the text file for download
-    st.download_button(
-        label="Download Image URLs",
-        data=url_text.encode('utf-8'),
-        file_name="mapillary_image_urls.txt",
-        mime="text/plain"
-    )
-
 else:
-    st.write("Draw a polygon on the map, then click the search button to get image URLs and see features.")
+    st.write("Draw a polygon on the map, then click the search button to download images and see features.")
