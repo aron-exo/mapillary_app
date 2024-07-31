@@ -20,6 +20,21 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
+# Function to get image URL for a feature
+def get_image_url(feature_id):
+    url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=images'
+    response = requests.get(url)
+    if response.status_code == 200:
+        json_data = response.json()
+        if 'images' in json_data and 'data' in json_data['images'] and json_data['images']['data']:
+            image_id = json_data['images']['data'][0]['id']
+            image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=thumb_original_url'
+            response = requests.get(image_url)
+            if response.status_code == 200:
+                image_data = response.json()
+                return image_data.get('thumb_original_url')
+    return None
+
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
     west, south, east, north = bbox
@@ -34,6 +49,8 @@ def get_features_within_bbox(bbox):
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get('data', [])
+            for feature in data:
+                feature['image_url'] = get_image_url(feature['id'])
             features.extend(data)
     
     return features
@@ -66,10 +83,15 @@ if st.session_state.get('polygon_drawn', False):
 # Display features and add markers to the map
 if st.session_state['features']:
     for feature in st.session_state['features']:
-        st.write(feature)
+        #st.write(feature)
         geom = feature['geometry']
         coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        popup_content = f"ID: {feature['id']}<br>Value: {feature['object_value']}"
+        image_url = feature.get('image_url', '#')
+        popup_content = f"""
+        ID: {feature['id']}<br>
+        Value: {feature['object_value']}<br>
+        <a href="{image_url}" target="_blank">View Image</a>
+        """
         folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
     
     # Display the updated map
