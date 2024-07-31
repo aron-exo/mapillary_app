@@ -4,6 +4,8 @@ import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
+import base64
+import mapbox_vector_tile
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -20,19 +22,41 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
-# Function to get image URL for a feature
-def get_image_url(feature_id):
-    url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=images'
-    response = requests.get(url)
+# Function to get image and detection data
+def get_image_and_detection_data(image_id):
+    image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
+    detections_url = f'https://graph.mapillary.com/{image_id}/detections?access_token={mly_key}&fields=geometry,value'
+
+    # Get image data
+    response = requests.get(image_url)
     if response.status_code == 200:
-        json_data = response.json()
-        if 'images' in json_data and 'data' in json_data['images'] and json_data['images']['data']:
-            image_id = json_data['images']['data'][0]['id']
-            image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=thumb_original_url'
-            response = requests.get(image_url)
-            if response.status_code == 200:
-                image_data = response.json()
-                return image_data.get('thumb_original_url')
+        image_data = response.json()
+        height = image_data['height']
+        width = image_data['width']
+        jpeg_url = image_data['thumb_original_url']
+
+        # Get detection data
+        response = requests.get(detections_url)
+        if response.status_code == 200:
+            detections_data = response.json()['data']
+            decoded_detections = []
+            for detection in detections_data:
+                base64_string = detection['geometry']
+                vector_data = base64.decodebytes(base64_string.encode('utf-8'))
+                decoded_geometry = mapbox_vector_tile.decode(vector_data)
+                detection_coordinates = decoded_geometry['mpy-or']['features'][0]['geometry']['coordinates']
+                pixel_coords = [[[x/4096 * width, y/4096 * height] for x,y in tuple(coord_pair)] for coord_pair in detection_coordinates]
+                decoded_detections.append({
+                    'value': detection['value'],
+                    'pixel_coords': pixel_coords
+                })
+
+            return {
+                'jpeg_url': jpeg_url,
+                'height': height,
+                'width': width,
+                'detections': decoded_detections
+            }
     return None
 
 # Function to get features within a bounding box
@@ -50,7 +74,9 @@ def get_features_within_bbox(bbox):
         if response.status_code == 200:
             data = response.json().get('data', [])
             for feature in data:
-                feature['image_url'] = get_image_url(feature['id'])
+                image_data = get_image_and_detection_data(feature['id'])
+                if image_data:
+                    feature['image_data'] = image_data
             features.extend(data)
     
     return features
@@ -83,15 +109,22 @@ if st.session_state.get('polygon_drawn', False):
 # Display features and add markers to the map
 if st.session_state['features']:
     for feature in st.session_state['features']:
-        #st.write(feature)
+        st.write(feature)
         geom = feature['geometry']
         coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        image_url = feature.get('image_url', '#')
+        image_data = feature.get('image_data', {})
+        jpeg_url = image_data.get('jpeg_url', '#')
+        detections = image_data.get('detections', [])
+        
         popup_content = f"""
         ID: {feature['id']}<br>
         Value: {feature['object_value']}<br>
-        <a href="{image_url}" target="_blank">View Image</a>
+        <a href="{jpeg_url}" target="_blank">View Image</a><br>
+        Detections:<br>
         """
+        for detection in detections:
+            popup_content += f"- {detection['value']}<br>"
+        
         folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
     
     # Display the updated map
