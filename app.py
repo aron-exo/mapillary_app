@@ -43,6 +43,7 @@ def get_image_and_detection_data(image_id):
 
     # Get image data
     response = requests.get(image_url)
+    st.write(f"Image API response status: {response.status_code}")
     if response.status_code == 200:
         image_data = response.json()
         height = image_data.get('height')
@@ -51,8 +52,13 @@ def get_image_and_detection_data(image_id):
         st.write(f"Image data fetched successfully for {image_id}")
         st.write(f"JPEG URL: {jpeg_url}")
 
+        if not jpeg_url:
+            st.write(f"Warning: No JPEG URL found for image {image_id}")
+            return None
+
         # Get detection data
         response = requests.get(detections_url)
+        st.write(f"Detections API response status: {response.status_code}")
         if response.status_code == 200:
             detections_data = response.json().get('data', [])
             st.write(f"Number of detections: {len(detections_data)}")
@@ -74,7 +80,10 @@ def get_image_and_detection_data(image_id):
                 'width': width,
                 'detections': decoded_detections
             }
-    st.write(f"Failed to fetch data for image ID: {image_id}")
+        else:
+            st.write(f"Failed to fetch detection data for image ID: {image_id}")
+    else:
+        st.write(f"Failed to fetch image data for image ID: {image_id}")
     return None
 
 # Function to draw detections on image
@@ -169,17 +178,23 @@ if st.session_state.get('polygon_drawn', False):
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
             for i, feature in enumerate(features):
-                image_data = feature.get('image_data', {})
-                jpeg_url = image_data.get('jpeg_url', '#')
-                detections = image_data.get('detections', [])
-                
-                # Draw detections on image
-                img_buf = draw_detections_on_image(jpeg_url, detections)
-                if img_buf:
-                    zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
-                    st.write(f"Added feature_{i+1}.png to zip file")
+                image_data = feature.get('image_data')
+                if image_data:
+                    jpeg_url = image_data.get('jpeg_url')
+                    detections = image_data.get('detections', [])
+                    
+                    if jpeg_url and jpeg_url != '#':
+                        # Draw detections on image
+                        img_buf = draw_detections_on_image(jpeg_url, detections)
+                        if img_buf:
+                            zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
+                            st.write(f"Added feature_{i+1}.png to zip file")
+                        else:
+                            st.write(f"Failed to process image for feature {i+1}")
+                    else:
+                        st.write(f"No valid JPEG URL for feature {i+1}")
                 else:
-                    st.write(f"Failed to process image for feature {i+1}")
+                    st.write(f"No image data for feature {i+1}")
 
         # Offer the zip file for download
         zip_buffer.seek(0)
