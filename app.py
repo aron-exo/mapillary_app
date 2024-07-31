@@ -15,8 +15,8 @@ st.title("Mapillary Feature Explorer")
 
 # Initialize session state
 if 'map' not in st.session_state:
-    st.session_state['map'] = folium.Map(location=[34.78999632390827,
-          32.07011233586559], zoom_start=12)
+    st.session_state['map'] = folium.Map(location=[
+          32.07011233586559,34.78999632390827], zoom_start=12)
     draw = folium.plugins.Draw(export=True)
     draw.add_to(st.session_state['map'])
 
