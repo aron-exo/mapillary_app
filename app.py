@@ -148,37 +148,39 @@ if st.session_state.get('polygon_drawn', False):
         # Get features within the bounding box
         st.session_state['features'] = get_features_within_bbox(bounds)
         
+        # Add markers to the map
+        marker_cluster = MarkerCluster().add_to(st.session_state['map'])
+        for feature in st.session_state['features']:
+            geom = feature['geometry']
+            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+            image_data = feature.get('image_data', {})
+            jpeg_url = image_data.get('jpeg_url', '#')
+            detections = image_data.get('detections', [])
+            
+            # Draw detections on image
+            image_with_detections = draw_detections_on_image(jpeg_url, detections)
+            
+            popup_content = f"""
+            <h3>Feature Information</h3>
+            <p><strong>ID:</strong> {feature['id']}</p>
+            <p><strong>Value:</strong> {feature['object_value']}</p>
+            """
+            
+            if image_with_detections:
+                popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
+            else:
+                popup_content += '<p>Image not available</p>'
+            
+            iframe = folium.IFrame(html=popup_content, width=550, height=400)
+            popup = folium.Popup(iframe, max_width=550)
+            folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
+        
+        # Update the map in the session state
+        st.session_state['map'] = st.session_state['map']
+        
+        # Rerun the app to display the updated map
+        st.experimental_rerun()
+        
         st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
-
-# Display features and add markers to the map
-if st.session_state['features']:
-    marker_cluster = MarkerCluster().add_to(st.session_state['map'])
-    for feature in st.session_state['features']:
-        geom = feature['geometry']
-        coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        image_data = feature.get('image_data', {})
-        jpeg_url = image_data.get('jpeg_url', '#')
-        detections = image_data.get('detections', [])
-        
-        # Draw detections on image
-        image_with_detections = draw_detections_on_image(jpeg_url, detections)
-        
-        popup_content = f"""
-        <h3>Feature Information</h3>
-        <p><strong>ID:</strong> {feature['id']}</p>
-        <p><strong>Value:</strong> {feature['object_value']}</p>
-        """
-        
-        if image_with_detections:
-            popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
-        else:
-            popup_content += '<p>Image not available</p>'
-        
-        iframe = folium.IFrame(html=popup_content, width=550, height=400)
-        popup = folium.Popup(iframe, max_width=550)
-        folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
-    
-    # Display the updated map
-    #st_folium(st.session_state['map'], width=700, height=500)
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
