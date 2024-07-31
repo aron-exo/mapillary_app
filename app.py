@@ -4,6 +4,8 @@ import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
+import io
+import zipfile
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -13,12 +15,15 @@ st.title("Mapillary Feature Explorer")
 
 # Initialize session state
 if 'map' not in st.session_state:
-    st.session_state['map'] = folium.Map(location=[37.7749, -122.4194], zoom_start=12)
+    st.session_state['map'] = folium.Map(location=[32.07011233586559, 34.78999632390827], zoom_start=12)
     draw = folium.plugins.Draw(export=True)
     draw.add_to(st.session_state['map'])
 
 if 'features' not in st.session_state:
     st.session_state['features'] = []
+
+if 'zip_buffer' not in st.session_state:
+    st.session_state['zip_buffer'] = None
 
 # Function to get image URL for a feature
 def get_image_url(feature_id):
@@ -55,6 +60,30 @@ def get_features_within_bbox(bbox):
     
     return features
 
+# Function to download images and create a zip file
+def create_image_zip(features):
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for i, feature in enumerate(features):
+            image_url = feature.get('image_url')
+            if image_url:
+                try:
+                    response = requests.get(image_url)
+                    if response.status_code == 200:
+                        image_data = response.content
+                        file_name = f"feature_{i+1}_{feature['id']}.jpg"
+                        zip_file.writestr(file_name, image_data)
+                        st.write(f"Added {file_name} to zip")
+                    else:
+                        st.write(f"Failed to download image for feature {i+1} ({feature['id']})")
+                except Exception as e:
+                    st.write(f"Error downloading image for feature {i+1} ({feature['id']}): {str(e)}")
+            else:
+                st.write(f"No image URL for feature {i+1} ({feature['id']})")
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
 # Display the map
 st_map = st_folium(st.session_state['map'], width=700, height=500)
 
@@ -69,32 +98,44 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features in the drawn area"):
+    if st.button("Search for features and download images"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
         # Get features within the bounding box
-        st.session_state['features'] = get_features_within_bbox(bounds)
+        features = get_features_within_bbox(bounds)
         
-        st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
+        st.session_state['features'] = features
+        st.success(f"Found {len(features)} features in the selected area.")
 
-# Display features and add markers to the map
-if st.session_state['features']:
-    for feature in st.session_state['features']:
-        st.write(feature)
-        geom = feature['geometry']
-        coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        image_url = feature.get('image_url', '#')
-        popup_content = f"""
-        ID: {feature['id']}<br>
-        Value: {feature['object_value']}<br>
-        <a href="{image_url}" target="_blank">View Image</a>
-        """
-        folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
-    
-    # Display the updated map
-    st_folium(st.session_state['map'], width=700, height=500)
+        # Create zip file with images
+        st.session_state['zip_buffer'] = create_image_zip(features)
+
+        # Display features and add markers to the map
+        for feature in features:
+            geom = feature['geometry']
+            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+            image_url = feature.get('image_url', '#')
+            popup_content = f"""
+            ID: {feature['id']}<br>
+            Value: {feature['object_value']}<br>
+            <a href="{image_url}" target="_blank">View Image</a>
+            """
+            folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
+        
+        # Display the updated map
+        st_folium(st.session_state['map'], width=700, height=500)
+
+# Display the download button if zip_buffer exists
+if st.session_state['zip_buffer'] is not None:
+    st.download_button(
+        label="Download Images",
+        data=st.session_state['zip_buffer'],
+        file_name="mapillary_images.zip",
+        mime="application/zip"
+    )
+
 else:
-    st.write("Draw a polygon on the map, then click the search button to see features.")
+    st.write("Draw a polygon on the map, then click the search button to download images and see features.")
