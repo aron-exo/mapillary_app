@@ -20,6 +20,9 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
+if 'image_urls' not in st.session_state:
+    st.session_state['image_urls'] = []
+
 # Function to get image URL for a feature
 def get_image_url(feature_id):
     url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=images'
@@ -78,31 +81,20 @@ if st.session_state.get('polygon_drawn', False):
         # Get features within the bounding box
         features = get_features_within_bbox(bounds)
         
+        st.session_state['features'] = features
         st.success(f"Found {len(features)} features in the selected area.")
 
-        # Display image URLs and create a list for download
-        st.subheader("Image URLs:")
+        # Create list of image URLs
         image_urls = []
         for i, feature in enumerate(features):
             feature_id = feature['id']
             image_url = feature.get('image_url')
             if image_url:
-                st.write(f"Feature {i+1} ({feature_id}): {image_url}")
                 image_urls.append(f"Feature {i+1} ({feature_id}): {image_url}")
             else:
-                st.write(f"Feature {i+1} ({feature_id}): No image URL found")
                 image_urls.append(f"Feature {i+1} ({feature_id}): No image URL found")
-
-        # Create a text file with image URLs
-        url_text = "\n".join(image_urls)
         
-        # Offer the text file for download
-        st.download_button(
-            label="Download Image URLs",
-            data=url_text.encode('utf-8'),
-            file_name="mapillary_image_urls.txt",
-            mime="text/plain"
-        )
+        st.session_state['image_urls'] = image_urls
 
         # Display features and add markers to the map
         for feature in features:
@@ -118,6 +110,23 @@ if st.session_state.get('polygon_drawn', False):
         
         # Display the updated map
         st_folium(st.session_state['map'], width=700, height=500)
+
+# Display image URLs
+if st.session_state['image_urls']:
+    st.subheader("Image URLs:")
+    for url in st.session_state['image_urls']:
+        st.write(url)
+    
+    # Create a text file with image URLs
+    url_text = "\n".join(st.session_state['image_urls'])
+    
+    # Offer the text file for download
+    st.download_button(
+        label="Download Image URLs",
+        data=url_text.encode('utf-8'),
+        file_name="mapillary_image_urls.txt",
+        mime="text/plain"
+    )
 
 else:
     st.write("Draw a polygon on the map, then click the search button to get image URLs and see features.")
