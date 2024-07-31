@@ -37,7 +37,7 @@ if 'features' not in st.session_state:
 
 # Function to get image and detection data
 def get_image_and_detection_data(image_id):
-    logging.debug(f"Fetching data for image ID: {image_id}")
+    st.write(f"Fetching data for image ID: {image_id}")
     image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
     detections_url = f'https://graph.mapillary.com/{image_id}/detections?access_token={mly_key}&fields=geometry,value'
 
@@ -45,15 +45,17 @@ def get_image_and_detection_data(image_id):
     response = requests.get(image_url)
     if response.status_code == 200:
         image_data = response.json()
-        height = image_data['height']
-        width = image_data['width']
-        jpeg_url = image_data['thumb_original_url']
-        logging.debug(f"Image data fetched successfully for {image_id}")
+        height = image_data.get('height')
+        width = image_data.get('width')
+        jpeg_url = image_data.get('thumb_original_url')
+        st.write(f"Image data fetched successfully for {image_id}")
+        st.write(f"JPEG URL: {jpeg_url}")
 
         # Get detection data
         response = requests.get(detections_url)
         if response.status_code == 200:
-            detections_data = response.json()['data']
+            detections_data = response.json().get('data', [])
+            st.write(f"Number of detections: {len(detections_data)}")
             decoded_detections = []
             for detection in detections_data:
                 base64_string = detection['geometry']
@@ -65,33 +67,33 @@ def get_image_and_detection_data(image_id):
                     'value': detection['value'],
                     'pixel_coords': pixel_coords[0]  # We only need the outer ring
                 })
-            logging.debug(f"Detection data fetched successfully for {image_id}")
+            st.write(f"Detection data fetched successfully for {image_id}")
             return {
                 'jpeg_url': jpeg_url,
                 'height': height,
                 'width': width,
                 'detections': decoded_detections
             }
-    logging.warning(f"Failed to fetch data for image ID: {image_id}")
+    st.write(f"Failed to fetch data for image ID: {image_id}")
     return None
 
 # Function to draw detections on image
 def draw_detections_on_image(image_url, detections):
-    logging.debug(f"Drawing detections on image: {image_url}")
+    st.write(f"Drawing detections on image: {image_url}")
     if not image_url or image_url == '#':
-        logging.warning(f"Invalid image URL: {image_url}")
+        st.write(f"Invalid image URL: {image_url}")
         return None
     
     try:
         response = requests.get(image_url)
         response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
-        logging.debug("Image opened successfully")
+        st.write("Image opened successfully")
     except requests.RequestException as e:
-        logging.error(f"Error fetching image: {e}")
+        st.write(f"Error fetching image: {e}")
         return None
     except IOError as e:
-        logging.error(f"Error opening image: {e}")
+        st.write(f"Error opening image: {e}")
         return None
     
     fig, ax = plt.subplots()
@@ -110,12 +112,12 @@ def draw_detections_on_image(image_url, detections):
     img_buf.seek(0)
     plt.close(fig)
     
-    logging.debug("Detections drawn successfully")
+    st.write("Detections drawn successfully")
     return img_buf
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
-    logging.debug(f"Fetching features within bbox: {bbox}")
+    st.write(f"Fetching features within bbox: {bbox}")
     west, south, east, north = bbox
     tiles = list(mercantile.tiles(west, south, east, north, 18))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
@@ -128,14 +130,14 @@ def get_features_within_bbox(bbox):
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get('data', [])
-            logging.debug(f"Found {len(data)} features in tile")
+            st.write(f"Found {len(data)} features in tile")
             for feature in data:
                 image_data = get_image_and_detection_data(feature['id'])
                 if image_data:
                     feature['image_data'] = image_data
             features.extend(data)
     
-    logging.debug(f"Total features found: {len(features)}")
+    st.write(f"Total features found: {len(features)}")
     return features
 
 # Display the map
@@ -162,7 +164,6 @@ if st.session_state.get('polygon_drawn', False):
         features = get_features_within_bbox(bounds)
         
         st.success(f"Found {len(features)} features in the selected area.")
-        logging.info(f"Found {len(features)} features in the selected area.")
 
         # Create a zip file with images
         zip_buffer = io.BytesIO()
@@ -176,14 +177,14 @@ if st.session_state.get('polygon_drawn', False):
                 img_buf = draw_detections_on_image(jpeg_url, detections)
                 if img_buf:
                     zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
-                    logging.info(f"Added feature_{i+1}.png to zip file")
+                    st.write(f"Added feature_{i+1}.png to zip file")
                 else:
-                    logging.warning(f"Failed to process image for feature {i+1}")
+                    st.write(f"Failed to process image for feature {i+1}")
 
         # Offer the zip file for download
         zip_buffer.seek(0)
         zip_size = zip_buffer.getbuffer().nbytes
-        logging.info(f"Zip file size: {zip_size} bytes")
+        st.write(f"Zip file size: {zip_size} bytes")
         
         if zip_size > 0:
             st.download_button(
