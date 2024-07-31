@@ -3,6 +3,7 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
+import mercantile
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -21,16 +22,32 @@ draw.add_to(m)
 # Display the map
 st_map = st_folium(m, width=700, height=500)
 
-print("st_map object:", st_map)  # Debug print
-
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
-    bbox_str = f'{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}'
-    url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry,images&bbox={bbox_str}'
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json().get('data', [])
-    return []
+    west, south, east, north = bbox
+    tiles = list(mercantile.tiles(west, south, east, north, 18))
+    bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
+    
+    features = []
+    
+    for bbox in bbox_list:
+        bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
+        url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json().get('data', [])
+            for obj in data:
+                feature = {
+                    'type': 'Feature',
+                    'properties': {
+                        'id': obj['id'],
+                        'object_value': obj['object_value']
+                    },
+                    'geometry': obj['geometry']
+                }
+                features.append(feature)
+    
+    return features
 
 # Initialize session state
 if 'last_draw' not in st.session_state:
@@ -38,45 +55,31 @@ if 'last_draw' not in st.session_state:
 if 'polygon_drawn' not in st.session_state:
     st.session_state['polygon_drawn'] = False
 
-print("Initial session state:", st.session_state)  # Debug print
-
 # Check if a new polygon has been drawn
-if st_map is not None:
-    last_draw = st_map.get('last_active_drawing')
-    print("Last active drawing:", last_draw)  # Debug print
+if st_map is not None and 'all_drawings' in st_map:
+    last_draw = st_map['all_drawings'][-1] if st_map['all_drawings'] else None
     if last_draw is not None and last_draw != st.session_state['last_draw']:
         st.session_state['last_draw'] = last_draw
         st.session_state['polygon_drawn'] = True
-        print("New polygon drawn")  # Debug print
     elif last_draw is None:
         st.session_state['polygon_drawn'] = False
-        print("No polygon drawn")  # Debug print
-
-print("Updated session state:", st.session_state)  # Debug print
 
 # Add a button to start the search
 if st.session_state['polygon_drawn']:
     if st.button("Search for features in the drawn area"):
-        print("Search button clicked")  # Debug print
         last_draw = st.session_state['last_draw']
-        print("Searching for features in:", last_draw)  # Debug print
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
         # Get features within the bounding box
         features = get_features_within_bbox(bounds)
-        print(f"Found {len(features)} features")  # Debug print
         
         # Add features to the map with pop-ups
         for feature in features:
             geom = feature['geometry']
             coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-            image_url = f"https://graph.mapillary.com/{feature['id']}?access_token={mly_key}&fields=thumb_original_url"
-            response = requests.get(image_url)
-            image_data = response.json()
-            thumb_url = image_data.get('thumb_original_url', '#')
-            popup_content = f"<a href='{thumb_url}' target='_blank'>View Image</a>"
+            popup_content = f"ID: {feature['properties']['id']}<br>Value: {feature['properties']['object_value']}"
             folium.Marker(location=coords, popup=popup_content).add_to(m)
         
         # Display the updated map
@@ -85,5 +88,3 @@ if st.session_state['polygon_drawn']:
         st.success(f"Found {len(features)} features in the selected area.")
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
-
-print("End of script")  # Debug print
