@@ -69,55 +69,32 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features and get image URLs"):
+    if st.button("Search for features in the drawn area"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
         # Get features within the bounding box
-        features = get_features_within_bbox(bounds)
+        st.session_state['features'] = get_features_within_bbox(bounds)
         
-        st.success(f"Found {len(features)} features in the selected area.")
+        st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
 
-        # Display image URLs and create a list for download
-        st.subheader("Image URLs:")
-        image_urls = []
-        for i, feature in enumerate(features):
-            feature_id = feature['id']
-            image_url = feature.get('image_url')
-            if image_url:
-                st.write(f"Feature {i+1} ({feature_id}): {image_url}")
-                image_urls.append(f"Feature {i+1} ({feature_id}): {image_url}")
-            else:
-                st.write(f"Feature {i+1} ({feature_id}): No image URL found")
-                image_urls.append(f"Feature {i+1} ({feature_id}): No image URL found")
-
-        # Create a text file with image URLs
-        url_text = "\n".join(image_urls)
-        
-        # Offer the text file for download
-        st.download_button(
-            label="Download Image URLs",
-            data=url_text.encode('utf-8'),
-            file_name="mapillary_image_urls.txt",
-            mime="text/plain"
-        )
-
-        # Display features and add markers to the map
-        for feature in features:
-            geom = feature['geometry']
-            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-            image_url = feature.get('image_url', '#')
-            popup_content = f"""
-            ID: {feature['id']}<br>
-            Value: {feature['object_value']}<br>
-            <a href="{image_url}" target="_blank">View Image</a>
-            """
-            folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
-        
-        # Display the updated map
-        st_folium(st.session_state['map'], width=700, height=500)
-
+# Display features and add markers to the map
+if st.session_state['features']:
+    for feature in st.session_state['features']:
+        st.write(feature)
+        geom = feature['geometry']
+        coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+        image_url = feature.get('image_url', '#')
+        popup_content = f"""
+        ID: {feature['id']}<br>
+        Value: {feature['object_value']}<br>
+        <a href="{image_url}" target="_blank">View Image</a>
+        """
+        folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
+    
+    # Display the updated map
+    st_folium(st.session_state['map'], width=700, height=500)
 else:
-    st.write("Draw a polygon on the map, then click the search button to get image URLs and see features.")
+    st.write("Draw a polygon on the map, then click the search button to see features.")
