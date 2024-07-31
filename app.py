@@ -36,11 +36,14 @@ if 'last_draw' in st.session_state:
 else:
     last_draw = None
 
-if st_map['last_draw'] != last_draw:
-    st.session_state['last_draw'] = st_map['last_draw']
-    last_draw = st_map['last_draw']
+# Check if 'last_draw' key exists in st_map
+if 'last_draw' in st_map:
+    if st_map['last_draw'] != last_draw:
+        st.session_state['last_draw'] = st_map['last_draw']
+        last_draw = st_map['last_draw']
 
-    if last_draw is not None:
+if last_draw is not None:
+    if st.button("Query Features"):
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
@@ -61,4 +64,3 @@ if st_map['last_draw'] != last_draw:
 
         # Display the updated map
         st_folium(m, width=700, height=500)
-
