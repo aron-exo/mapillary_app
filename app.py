@@ -15,13 +15,15 @@ st.title("Mapillary Feature Explorer")
 
 # Initialize session state
 if 'map' not in st.session_state:
-    st.session_state['map'] = folium.Map(location=[
-          32.07011233586559,34.78999632390827], zoom_start=12)
+    st.session_state['map'] = folium.Map(location=[32.07011233586559, 34.78999632390827], zoom_start=12)
     draw = folium.plugins.Draw(export=True)
     draw.add_to(st.session_state['map'])
 
 if 'features' not in st.session_state:
     st.session_state['features'] = []
+
+if 'zip_buffer' not in st.session_state:
+    st.session_state['zip_buffer'] = None
 
 # Function to get image URL for a feature
 def get_image_url(feature_id):
@@ -109,15 +111,7 @@ if st.session_state.get('polygon_drawn', False):
         st.success(f"Found {len(features)} features in the selected area.")
 
         # Create zip file with images
-        zip_buffer = create_image_zip(features)
-        
-        # Offer the zip file for download
-        st.download_button(
-            label="Download Images",
-            data=zip_buffer,
-            file_name="mapillary_images.zip",
-            mime="application/zip"
-        )
+        st.session_state['zip_buffer'] = create_image_zip(features)
 
         # Display features and add markers to the map
         for feature in features:
@@ -133,6 +127,15 @@ if st.session_state.get('polygon_drawn', False):
         
         # Display the updated map
         st_folium(st.session_state['map'], width=700, height=500)
+
+# Display the download button if zip_buffer exists
+if st.session_state['zip_buffer'] is not None:
+    st.download_button(
+        label="Download Images",
+        data=st.session_state['zip_buffer'],
+        file_name="mapillary_images.zip",
+        mime="application/zip"
+    )
 
 else:
     st.write("Draw a polygon on the map, then click the search button to download images and see features.")
