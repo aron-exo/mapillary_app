@@ -4,15 +4,6 @@ import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
-import base64
-from folium.plugins import Draw
-import io
-
-try:
-    import mapbox_vector_tile
-except ImportError:
-    st.error("The 'mapbox_vector_tile' module is not installed. Please install it using 'pip install mapbox_vector_tile'.")
-    st.stop()
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -23,7 +14,7 @@ st.title("Mapillary Feature Explorer")
 # Initialize session state
 if 'map' not in st.session_state:
     st.session_state['map'] = folium.Map(location=[37.7749, -122.4194], zoom_start=12)
-    draw = Draw(export=True)
+    draw = folium.plugins.Draw(export=True)
     draw.add_to(st.session_state['map'])
 
 if 'features' not in st.session_state:
@@ -31,22 +22,21 @@ if 'features' not in st.session_state:
 
 # Function to get image URL for a feature
 def get_image_url(feature_id):
-    st.write(f"Fetching image URL for feature ID: {feature_id}")
-    url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=thumb_original_url'
+    url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=images'
     response = requests.get(url)
-    st.write(f"API response status: {response.status_code}")
     if response.status_code == 200:
-        data = response.json()
-        jpeg_url = data.get('thumb_original_url')
-        st.write(f"Image URL: {jpeg_url}")
-        return jpeg_url
-    else:
-        st.write(f"Failed to fetch image URL for feature ID: {feature_id}")
-        return None
+        json_data = response.json()
+        if 'images' in json_data and 'data' in json_data['images'] and json_data['images']['data']:
+            image_id = json_data['images']['data'][0]['id']
+            image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=thumb_original_url'
+            response = requests.get(image_url)
+            if response.status_code == 200:
+                image_data = response.json()
+                return image_data.get('thumb_original_url')
+    return None
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
-    st.write(f"Fetching features within bbox: {bbox}")
     west, south, east, north = bbox
     tiles = list(mercantile.tiles(west, south, east, north, 18))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
@@ -59,10 +49,10 @@ def get_features_within_bbox(bbox):
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json().get('data', [])
-            st.write(f"Found {len(data)} features in tile")
+            for feature in data:
+                feature['image_url'] = get_image_url(feature['id'])
             features.extend(data)
     
-    st.write(f"Total features found: {len(features)}")
     return features
 
 # Display the map
@@ -79,42 +69,32 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features and get image URLs"):
+    if st.button("Search for features in the drawn area"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
         # Get features within the bounding box
-        features = get_features_within_bbox(bounds)
+        st.session_state['features'] = get_features_within_bbox(bounds)
         
-        st.success(f"Found {len(features)} features in the selected area.")
+        st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
 
-        # Get image URLs for each feature
-        image_urls = []
-        for i, feature in enumerate(features):
-            feature_id = feature['id']
-            image_url = get_image_url(feature_id)
-            if image_url:
-                image_urls.append(f"Feature {i+1} ({feature_id}): {image_url}")
-            else:
-                image_urls.append(f"Feature {i+1} ({feature_id}): No image URL found")
-
-        # Display image URLs
-        st.subheader("Image URLs:")
-        for url in image_urls:
-            st.write(url)
-
-        # Create a text file with image URLs
-        url_text = "\n".join(image_urls)
-        
-        # Offer the text file for download
-        st.download_button(
-            label="Download Image URLs",
-            data=url_text.encode('utf-8'),
-            file_name="mapillary_image_urls.txt",
-            mime="text/plain"
-        )
-
+# Display features and add markers to the map
+if st.session_state['features']:
+    for feature in st.session_state['features']:
+        st.write(feature)
+        geom = feature['geometry']
+        coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+        image_url = feature.get('image_url', '#')
+        popup_content = f"""
+        ID: {feature['id']}<br>
+        Value: {feature['object_value']}<br>
+        <a href="{image_url}" target="_blank">View Image</a>
+        """
+        folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
+    
+    # Display the updated map
+    st_folium(st.session_state['map'], width=700, height=500)
 else:
-    st.write("Draw a polygon on the map, then click the search button to get image URLs.")
+    st.write("Draw a polygon on the map, then click the search button to see features.")
