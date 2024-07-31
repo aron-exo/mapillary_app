@@ -46,6 +46,7 @@ def get_features_within_bbox(bbox):
                     'geometry': obj['geometry']
                 }
                 features.append(feature)
+                st.write(feature)
     
     return features
 
