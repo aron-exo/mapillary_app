@@ -5,7 +5,16 @@ from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
 import base64
-import mapbox_vector_tile
+from folium.plugins import MarkerCluster
+import matplotlib.pyplot as plt
+import io
+from PIL import Image
+
+try:
+    import mapbox_vector_tile
+except ImportError:
+    st.error("The 'mapbox_vector_tile' module is not installed. Please install it using 'pip install mapbox_vector_tile'.")
+    st.stop()
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -48,7 +57,7 @@ def get_image_and_detection_data(image_id):
                 pixel_coords = [[[x/4096 * width, y/4096 * height] for x,y in tuple(coord_pair)] for coord_pair in detection_coordinates]
                 decoded_detections.append({
                     'value': detection['value'],
-                    'pixel_coords': pixel_coords
+                    'pixel_coords': pixel_coords[0]  # We only need the outer ring
                 })
 
             return {
@@ -58,6 +67,30 @@ def get_image_and_detection_data(image_id):
                 'detections': decoded_detections
             }
     return None
+
+# Function to draw detections on image
+def draw_detections_on_image(image_url, detections):
+    response = requests.get(image_url)
+    img = Image.open(io.BytesIO(response.content))
+    
+    fig, ax = plt.subplots()
+    ax.imshow(img)
+    
+    for detection in detections:
+        coords = detection['pixel_coords']
+        x, y = zip(*coords)
+        ax.plot(x, y, linewidth=2, color='red')
+        ax.text(min(x), min(y), detection['value'], color='red', fontsize=8, bbox=dict(facecolor='white', alpha=0.7))
+    
+    ax.axis('off')
+    
+    img_buf = io.BytesIO()
+    plt.savefig(img_buf, format='png', bbox_inches='tight', pad_inches=0)
+    img_buf.seek(0)
+    img_str = base64.b64encode(img_buf.getvalue()).decode()
+    plt.close(fig)
+    
+    return f'data:image/png;base64,{img_str}'
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
@@ -108,32 +141,29 @@ if st.session_state.get('polygon_drawn', False):
 
 # Display features and add markers to the map
 if st.session_state['features']:
+    marker_cluster = MarkerCluster().add_to(st.session_state['map'])
     for feature in st.session_state['features']:
         geom = feature['geometry']
         coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-        folium.Marker(location=coords).add_to(st.session_state['map'])
+        image_data = feature.get('image_data', {})
+        jpeg_url = image_data.get('jpeg_url', '#')
+        detections = image_data.get('detections', [])
+        
+        # Draw detections on image
+        image_with_detections = draw_detections_on_image(jpeg_url, detections)
+        
+        popup_content = f"""
+        <h3>Feature Information</h3>
+        <p><strong>ID:</strong> {feature['id']}</p>
+        <p><strong>Value:</strong> {feature['object_value']}</p>
+        <img src="{image_with_detections}" style="width:100%;max-width:500px;">
+        """
+        
+        iframe = folium.IFrame(html=popup_content, width=550, height=400)
+        popup = folium.Popup(iframe, max_width=550)
+        folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
     
     # Display the updated map
     st_folium(st.session_state['map'], width=700, height=500)
-    
-    # Display feature information
-    st.subheader("Found Features:")
-    for i, feature in enumerate(st.session_state['features']):
-        st.write(f"Feature {i+1}:")
-        st.write(f"ID: {feature['id']}")
-        st.write(f"Value: {feature['object_value']}")
-        
-        image_data = feature.get('image_data', {})
-        jpeg_url = image_data.get('jpeg_url')
-        if jpeg_url:
-            st.write(f"[View Image]({jpeg_url})")
-        
-        detections = image_data.get('detections', [])
-        if detections:
-            st.write("Detections:")
-            for detection in detections:
-                st.write(f"- {detection['value']}")
-        
-        st.write("---")
 else:
     st.write("Draw a polygon on the map, then click the search button to see features.")
