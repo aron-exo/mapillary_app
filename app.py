@@ -36,10 +36,10 @@ if 'features' not in st.session_state:
     st.session_state['features'] = []
 
 # Function to get image and detection data
-def get_image_and_detection_data(image_id):
-    st.write(f"Fetching data for image ID: {image_id}")
-    image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
-    detections_url = f'https://graph.mapillary.com/{image_id}/detections?access_token={mly_key}&fields=geometry,value'
+def get_image_and_detection_data(feature_id):
+    st.write(f"Fetching data for feature ID: {feature_id}")
+    image_url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
+    detections_url = f'https://graph.mapillary.com/{feature_id}/detections?access_token={mly_key}&fields=geometry,value'
 
     # Get image data
     response = requests.get(image_url)
@@ -49,11 +49,11 @@ def get_image_and_detection_data(image_id):
         height = image_data.get('height')
         width = image_data.get('width')
         jpeg_url = image_data.get('thumb_original_url')
-        st.write(f"Image data fetched successfully for {image_id}")
+        st.write(f"Image data fetched successfully for {feature_id}")
         st.write(f"JPEG URL: {jpeg_url}")
 
         if not jpeg_url:
-            st.write(f"Warning: No JPEG URL found for image {image_id}")
+            st.write(f"Warning: No JPEG URL found for feature {feature_id}")
             return None
 
         # Get detection data
@@ -73,7 +73,7 @@ def get_image_and_detection_data(image_id):
                     'value': detection['value'],
                     'pixel_coords': pixel_coords[0]  # We only need the outer ring
                 })
-            st.write(f"Detection data fetched successfully for {image_id}")
+            st.write(f"Detection data fetched successfully for {feature_id}")
             return {
                 'jpeg_url': jpeg_url,
                 'height': height,
@@ -81,9 +81,9 @@ def get_image_and_detection_data(image_id):
                 'detections': decoded_detections
             }
         else:
-            st.write(f"Failed to fetch detection data for image ID: {image_id}")
+            st.write(f"Failed to fetch detection data for feature ID: {feature_id}")
     else:
-        st.write(f"Failed to fetch image data for image ID: {image_id}")
+        st.write(f"Failed to fetch image data for feature ID: {feature_id}")
     return None
 
 # Function to draw detections on image
@@ -174,9 +174,13 @@ if st.session_state.get('polygon_drawn', False):
         
         st.success(f"Found {len(features)} features in the selected area.")
 
-        # Create a zip file with images
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        # Create zip files for original images and images with detections
+        original_zip_buffer = io.BytesIO()
+        detection_zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(original_zip_buffer, 'w') as original_zip, \
+             zipfile.ZipFile(detection_zip_buffer, 'w') as detection_zip:
+            
             for i, feature in enumerate(features):
                 image_data = feature.get('image_data')
                 if image_data:
@@ -184,32 +188,55 @@ if st.session_state.get('polygon_drawn', False):
                     detections = image_data.get('detections', [])
                     
                     if jpeg_url and jpeg_url != '#':
-                        # Draw detections on image
+                        # Add original image to zip
+                        try:
+                            response = requests.get(jpeg_url)
+                            response.raise_for_status()
+                            original_zip.writestr(f"original_feature_{i+1}.jpg", response.content)
+                            st.write(f"Added original image for feature {i+1} to zip file")
+                        except requests.RequestException as e:
+                            st.write(f"Error fetching original image for feature {i+1}: {e}")
+                        
+                        # Draw detections on image and add to detection zip
                         img_buf = draw_detections_on_image(jpeg_url, detections)
                         if img_buf:
-                            zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
-                            st.write(f"Added feature_{i+1}.png to zip file")
+                            detection_zip.writestr(f"detection_feature_{i+1}.png", img_buf.getvalue())
+                            st.write(f"Added image with detections for feature {i+1} to zip file")
                         else:
-                            st.write(f"Failed to process image for feature {i+1}")
+                            st.write(f"Failed to process image with detections for feature {i+1}")
                     else:
                         st.write(f"No valid JPEG URL for feature {i+1}")
                 else:
                     st.write(f"No image data for feature {i+1}")
 
-        # Offer the zip file for download
-        zip_buffer.seek(0)
-        zip_size = zip_buffer.getbuffer().nbytes
-        st.write(f"Zip file size: {zip_size} bytes")
+        # Offer the zip files for download
+        original_zip_buffer.seek(0)
+        detection_zip_buffer.seek(0)
+        original_zip_size = original_zip_buffer.getbuffer().nbytes
+        detection_zip_size = detection_zip_buffer.getbuffer().nbytes
         
-        if zip_size > 0:
+        st.write(f"Original images zip file size: {original_zip_size} bytes")
+        st.write(f"Images with detections zip file size: {detection_zip_size} bytes")
+        
+        if original_zip_size > 0:
             st.download_button(
-                label="Download Images with Detections",
-                data=zip_buffer,
-                file_name="mapillary_features.zip",
+                label="Download Original Images",
+                data=original_zip_buffer,
+                file_name="mapillary_original_images.zip",
                 mime="application/zip"
             )
         else:
-            st.error("No images were processed. The zip file is empty.")
+            st.error("No original images were processed. The zip file is empty.")
+        
+        if detection_zip_size > 0:
+            st.download_button(
+                label="Download Images with Detections",
+                data=detection_zip_buffer,
+                file_name="mapillary_images_with_detections.zip",
+                mime="application/zip"
+            )
+        else:
+            st.error("No images with detections were processed. The zip file is empty.")
 
 else:
-    st.write("Draw a polygon on the map, then click the search button to generate a zip file with feature images.")
+    st.write("Draw a polygon on the map, then click the search button to generate zip files with feature images.")
