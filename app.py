@@ -15,8 +15,8 @@ st.title("Mapillary Feature Explorer")
 
 # Initialize session state
 if 'map' not in st.session_state:
-    st.session_state['map'] = folium.Map(location=[34.7899,
-          32.0701], zoom_start=12)
+    st.session_state['map'] = folium.Map(location=[34.78999632390827,
+          32.07011233586559], zoom_start=12)
     draw = folium.plugins.Draw(export=True)
     draw.add_to(st.session_state['map'])
 
@@ -41,7 +41,7 @@ def get_image_url(feature_id):
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
     west, south, east, north = bbox
-    tiles = list(mercantile.tiles(west, south, east, north, 18))
+    tiles = list(mercantile.tiles(west, south, east, north, 10))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
     
     features = []
