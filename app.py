@@ -5,10 +5,11 @@ from streamlit_folium import st_folium
 from shapely.geometry import shape
 import mercantile
 import base64
-from folium.plugins import MarkerCluster, Draw
+from folium.plugins import Draw
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
+import zipfile
 
 try:
     import mapbox_vector_tile
@@ -75,7 +76,7 @@ def draw_detections_on_image(image_url, detections):
     
     try:
         response = requests.get(image_url)
-        response.raise_for_status()  # This will raise an exception for 4xx and 5xx status codes
+        response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
     except requests.RequestException as e:
         print(f"Error fetching image: {e}")
@@ -98,10 +99,9 @@ def draw_detections_on_image(image_url, detections):
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format='png', bbox_inches='tight', pad_inches=0)
     img_buf.seek(0)
-    img_str = base64.b64encode(img_buf.getvalue()).decode()
     plt.close(fig)
     
-    return f'data:image/png;base64,{img_str}'
+    return img_buf
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
@@ -125,11 +125,8 @@ def get_features_within_bbox(bbox):
     
     return features
 
-# Create a placeholder for the map
-map_placeholder = st.empty()
-
-# Display the initial map
-st_map = st_folium(st.session_state['map'], width=700, height=500, key="initial_map")
+# Display the map
+st_map = st_folium(st.session_state['map'], width=700, height=500)
 
 # Check if a new polygon has been drawn
 if st_map is not None and 'all_drawings' in st_map:
@@ -142,51 +139,38 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features in the drawn area"):
+    if st.button("Search for features and generate zip"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
         # Get features within the bounding box
-        st.session_state['features'] = get_features_within_bbox(bounds)
+        features = get_features_within_bbox(bounds)
         
-        st.success(f"Found {len(st.session_state['features'])} features in the selected area.")
+        st.success(f"Found {len(features)} features in the selected area.")
 
-        # Clear existing markers
-        st.session_state['map'] = folium.Map(location=[37.7749, -122.4194], zoom_start=12)
-        draw = Draw(export=True)
-        draw.add_to(st.session_state['map'])
-        
-        marker_cluster = MarkerCluster().add_to(st.session_state['map'])
-        for feature in st.session_state['features']:
-            geom = feature['geometry']
-            coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
-            image_data = feature.get('image_data', {})
-            jpeg_url = image_data.get('jpeg_url', '#')
-            detections = image_data.get('detections', [])
-            
-            # Draw detections on image
-            image_with_detections = draw_detections_on_image(jpeg_url, detections)
-            
-            popup_content = f"""
-            <h3>Feature Information</h3>
-            <p><strong>ID:</strong> {feature['id']}</p>
-            <p><strong>Value:</strong> {feature['object_value']}</p>
-            """
-            
-            if image_with_detections:
-                popup_content += f'<img src="{image_with_detections}" style="width:100%;max-width:500px;">'
-            else:
-                popup_content += '<p>Image not available</p>'
-            
-            iframe = folium.IFrame(html=popup_content, width=550, height=400)
-            popup = folium.Popup(iframe, max_width=550)
-            folium.Marker(location=coords, popup=popup).add_to(marker_cluster)
-        
-        # Update the map in the placeholder
-        with map_placeholder.container():
-            st_folium(st.session_state['map'], width=700, height=500, key="updated_map")
+        # Create a zip file with images
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+            for i, feature in enumerate(features):
+                image_data = feature.get('image_data', {})
+                jpeg_url = image_data.get('jpeg_url', '#')
+                detections = image_data.get('detections', [])
+                
+                # Draw detections on image
+                img_buf = draw_detections_on_image(jpeg_url, detections)
+                if img_buf:
+                    zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
+
+        # Offer the zip file for download
+        zip_buffer.seek(0)
+        st.download_button(
+            label="Download Images with Detections",
+            data=zip_buffer,
+            file_name="mapillary_features.zip",
+            mime="application/zip"
+        )
 
 else:
-    st.write("Draw a polygon on the map, then click the search button to see features.")
+    st.write("Draw a polygon on the map, then click the search button to generate a zip file with feature images.")
