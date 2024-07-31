@@ -5,7 +5,7 @@ from streamlit_folium import st_folium
 from shapely.geometry import shape
 
 # Mapillary access token
-mly_key = 'YOUR_MAPILLARY_ACCESS_TOKEN'
+mly_key = st.secrets["mly_key"]
 
 # Initialize the Streamlit app
 st.title("Mapillary Feature Explorer")
