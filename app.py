@@ -35,9 +35,13 @@ if 'last_draw' not in st.session_state:
     st.session_state['last_draw'] = None
 
 # Check if a new polygon has been drawn
-if st_map['last_draw'] is not None and st_map['last_draw'] != st.session_state['last_draw']:
-    st.session_state['last_draw'] = st_map['last_draw']
-    st.session_state['polygon_drawn'] = True
+if st_map is not None and 'last_drawn_feature' in st_map:
+    last_draw = st_map['last_drawn_feature']
+    if last_draw is not None and last_draw != st.session_state['last_draw']:
+        st.session_state['last_draw'] = last_draw
+        st.session_state['polygon_drawn'] = True
+    else:
+        st.session_state['polygon_drawn'] = False
 else:
     st.session_state['polygon_drawn'] = False
 
