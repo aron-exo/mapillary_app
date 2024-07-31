@@ -46,7 +46,7 @@ def get_features_within_bbox(bbox):
                     'geometry': obj['geometry']
                 }
                 features.append(feature)
-                st.write(feature)
+                
     
     return features
 
@@ -79,6 +79,7 @@ if st.session_state['polygon_drawn']:
         # Add features to the map with pop-ups
         for feature in features:
             geom = feature['geometry']
+            st.write(feature)
             coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
             popup_content = f"ID: {feature['properties']['id']}<br>Value: {feature['properties']['object_value']}"
             folium.Marker(location=coords, popup=popup_content).add_to(m)
