@@ -107,14 +107,11 @@ if st.session_state.get('polygon_drawn', False):
 
         # Create a text file with image URLs
         url_text = "\n".join(image_urls)
-        url_file = io.StringIO()
-        url_file.write(url_text)
-        url_file.seek(0)
-
+        
         # Offer the text file for download
         st.download_button(
             label="Download Image URLs",
-            data=url_file,
+            data=url_text.encode('utf-8'),
             file_name="mapillary_image_urls.txt",
             mime="text/plain"
         )
