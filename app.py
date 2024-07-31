@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import io
 from PIL import Image
 import zipfile
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 try:
     import mapbox_vector_tile
@@ -34,44 +37,12 @@ if 'features' not in st.session_state:
 
 # Function to get image and detection data
 def get_image_and_detection_data(image_id):
-    image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
-    detections_url = f'https://graph.mapillary.com/{image_id}/detections?access_token={mly_key}&fields=geometry,value'
-
-    # Get image data
-    response = requests.get(image_url)
-    if response.status_code == 200:
-        image_data = response.json()
-        height = image_data['height']
-        width = image_data['width']
-        jpeg_url = image_data['thumb_original_url']
-
-        # Get detection data
-        response = requests.get(detections_url)
-        if response.status_code == 200:
-            detections_data = response.json()['data']
-            decoded_detections = []
-            for detection in detections_data:
-                base64_string = detection['geometry']
-                vector_data = base64.decodebytes(base64_string.encode('utf-8'))
-                decoded_geometry = mapbox_vector_tile.decode(vector_data)
-                detection_coordinates = decoded_geometry['mpy-or']['features'][0]['geometry']['coordinates']
-                pixel_coords = [[[x/4096 * width, y/4096 * height] for x,y in tuple(coord_pair)] for coord_pair in detection_coordinates]
-                decoded_detections.append({
-                    'value': detection['value'],
-                    'pixel_coords': pixel_coords[0]  # We only need the outer ring
-                })
-
-            return {
-                'jpeg_url': jpeg_url,
-                'height': height,
-                'width': width,
-                'detections': decoded_detections
-            }
-    return None
+    # ... (keep this function as is)
 
 # Function to draw detections on image
 def draw_detections_on_image(image_url, detections):
     if not image_url or image_url == '#':
+        logging.warning(f"Invalid image URL: {image_url}")
         return None
     
     try:
@@ -79,10 +50,10 @@ def draw_detections_on_image(image_url, detections):
         response.raise_for_status()
         img = Image.open(io.BytesIO(response.content))
     except requests.RequestException as e:
-        print(f"Error fetching image: {e}")
+        logging.error(f"Error fetching image: {e}")
         return None
     except IOError as e:
-        print(f"Error opening image: {e}")
+        logging.error(f"Error opening image: {e}")
         return None
     
     fig, ax = plt.subplots()
@@ -105,25 +76,7 @@ def draw_detections_on_image(image_url, detections):
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
-    west, south, east, north = bbox
-    tiles = list(mercantile.tiles(west, south, east, north, 18))
-    bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
-    
-    features = []
-    
-    for bbox in bbox_list:
-        bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
-        url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json().get('data', [])
-            for feature in data:
-                image_data = get_image_and_detection_data(feature['id'])
-                if image_data:
-                    feature['image_data'] = image_data
-            features.extend(data)
-    
-    return features
+    # ... (keep this function as is)
 
 # Display the map
 st_map = st_folium(st.session_state['map'], width=700, height=500)
@@ -162,6 +115,9 @@ if st.session_state.get('polygon_drawn', False):
                 img_buf = draw_detections_on_image(jpeg_url, detections)
                 if img_buf:
                     zip_file.writestr(f"feature_{i+1}.png", img_buf.getvalue())
+                    logging.info(f"Added feature_{i+1}.png to zip file")
+                else:
+                    logging.warning(f"Failed to process image for feature {i+1}")
 
         # Offer the zip file for download
         zip_buffer.seek(0)
@@ -171,6 +127,10 @@ if st.session_state.get('polygon_drawn', False):
             file_name="mapillary_features.zip",
             mime="application/zip"
         )
+
+        # Log the size of the zip file
+        zip_size = zip_buffer.getbuffer().nbytes
+        logging.info(f"Zip file size: {zip_size} bytes")
 
 else:
     st.write("Draw a polygon on the map, then click the search button to generate a zip file with feature images.")
