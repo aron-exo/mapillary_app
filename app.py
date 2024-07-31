@@ -37,7 +37,40 @@ if 'features' not in st.session_state:
 
 # Function to get image and detection data
 def get_image_and_detection_data(image_id):
-    # ... (keep this function as is)
+    image_url = f'https://graph.mapillary.com/{image_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
+    detections_url = f'https://graph.mapillary.com/{image_id}/detections?access_token={mly_key}&fields=geometry,value'
+
+    # Get image data
+    response = requests.get(image_url)
+    if response.status_code == 200:
+        image_data = response.json()
+        height = image_data['height']
+        width = image_data['width']
+        jpeg_url = image_data['thumb_original_url']
+
+        # Get detection data
+        response = requests.get(detections_url)
+        if response.status_code == 200:
+            detections_data = response.json()['data']
+            decoded_detections = []
+            for detection in detections_data:
+                base64_string = detection['geometry']
+                vector_data = base64.decodebytes(base64_string.encode('utf-8'))
+                decoded_geometry = mapbox_vector_tile.decode(vector_data)
+                detection_coordinates = decoded_geometry['mpy-or']['features'][0]['geometry']['coordinates']
+                pixel_coords = [[[x/4096 * width, y/4096 * height] for x,y in tuple(coord_pair)] for coord_pair in detection_coordinates]
+                decoded_detections.append({
+                    'value': detection['value'],
+                    'pixel_coords': pixel_coords[0]  # We only need the outer ring
+                })
+
+            return {
+                'jpeg_url': jpeg_url,
+                'height': height,
+                'width': width,
+                'detections': decoded_detections
+            }
+    return None
 
 # Function to draw detections on image
 def draw_detections_on_image(image_url, detections):
@@ -76,7 +109,25 @@ def draw_detections_on_image(image_url, detections):
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
-    # ... (keep this function as is)
+    west, south, east, north = bbox
+    tiles = list(mercantile.tiles(west, south, east, north, 18))
+    bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
+    
+    features = []
+    
+    for bbox in bbox_list:
+        bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
+        url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json().get('data', [])
+            for feature in data:
+                image_data = get_image_and_detection_data(feature['id'])
+                if image_data:
+                    feature['image_data'] = image_data
+            features.extend(data)
+    
+    return features
 
 # Display the map
 st_map = st_folium(st.session_state['map'], width=700, height=500)
