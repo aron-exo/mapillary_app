@@ -6,13 +6,7 @@ from shapely.geometry import shape
 import mercantile
 import base64
 from folium.plugins import Draw
-import matplotlib.pyplot as plt
 import io
-from PIL import Image
-import zipfile
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
 
 try:
     import mapbox_vector_tile
@@ -35,94 +29,20 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
-# Function to get image and detection data
-def get_image_and_detection_data(feature_id):
-    st.write(f"Fetching data for feature ID: {feature_id}")
-    image_url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=height,width,thumb_original_url'
-    detections_url = f'https://graph.mapillary.com/{feature_id}/detections?access_token={mly_key}&fields=geometry,value'
-
-    # Get image data
-    response = requests.get(image_url)
-    st.write(f"Image API response status: {response.status_code}")
+# Function to get image URL for a feature
+def get_image_url(feature_id):
+    st.write(f"Fetching image URL for feature ID: {feature_id}")
+    url = f'https://graph.mapillary.com/{feature_id}?access_token={mly_key}&fields=thumb_original_url'
+    response = requests.get(url)
+    st.write(f"API response status: {response.status_code}")
     if response.status_code == 200:
-        image_data = response.json()
-        height = image_data.get('height')
-        width = image_data.get('width')
-        jpeg_url = image_data.get('thumb_original_url')
-        st.write(f"Image data fetched successfully for {feature_id}")
-        st.write(f"JPEG URL: {jpeg_url}")
-
-        if not jpeg_url:
-            st.write(f"Warning: No JPEG URL found for feature {feature_id}")
-            return None
-
-        # Get detection data
-        response = requests.get(detections_url)
-        st.write(f"Detections API response status: {response.status_code}")
-        if response.status_code == 200:
-            detections_data = response.json().get('data', [])
-            st.write(f"Number of detections: {len(detections_data)}")
-            decoded_detections = []
-            for detection in detections_data:
-                base64_string = detection['geometry']
-                vector_data = base64.decodebytes(base64_string.encode('utf-8'))
-                decoded_geometry = mapbox_vector_tile.decode(vector_data)
-                detection_coordinates = decoded_geometry['mpy-or']['features'][0]['geometry']['coordinates']
-                pixel_coords = [[[x/4096 * width, y/4096 * height] for x,y in tuple(coord_pair)] for coord_pair in detection_coordinates]
-                decoded_detections.append({
-                    'value': detection['value'],
-                    'pixel_coords': pixel_coords[0]  # We only need the outer ring
-                })
-            st.write(f"Detection data fetched successfully for {feature_id}")
-            return {
-                'jpeg_url': jpeg_url,
-                'height': height,
-                'width': width,
-                'detections': decoded_detections
-            }
-        else:
-            st.write(f"Failed to fetch detection data for feature ID: {feature_id}")
+        data = response.json()
+        jpeg_url = data.get('thumb_original_url')
+        st.write(f"Image URL: {jpeg_url}")
+        return jpeg_url
     else:
-        st.write(f"Failed to fetch image data for feature ID: {feature_id}")
-    return None
-
-# Function to draw detections on image
-def draw_detections_on_image(image_url, detections):
-    st.write(f"Drawing detections on image: {image_url}")
-    if not image_url or image_url == '#':
-        st.write(f"Invalid image URL: {image_url}")
+        st.write(f"Failed to fetch image URL for feature ID: {feature_id}")
         return None
-    
-    try:
-        response = requests.get(image_url)
-        response.raise_for_status()
-        img = Image.open(io.BytesIO(response.content))
-        st.write("Image opened successfully")
-    except requests.RequestException as e:
-        st.write(f"Error fetching image: {e}")
-        return None
-    except IOError as e:
-        st.write(f"Error opening image: {e}")
-        return None
-    
-    fig, ax = plt.subplots()
-    ax.imshow(img)
-    
-    for detection in detections:
-        coords = detection['pixel_coords']
-        x, y = zip(*coords)
-        ax.plot(x, y, linewidth=2, color='red')
-        ax.text(min(x), min(y), detection['value'], color='red', fontsize=8, bbox=dict(facecolor='white', alpha=0.7))
-    
-    ax.axis('off')
-    
-    img_buf = io.BytesIO()
-    plt.savefig(img_buf, format='png', bbox_inches='tight', pad_inches=0)
-    img_buf.seek(0)
-    plt.close(fig)
-    
-    st.write("Detections drawn successfully")
-    return img_buf
 
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
@@ -140,10 +60,6 @@ def get_features_within_bbox(bbox):
         if response.status_code == 200:
             data = response.json().get('data', [])
             st.write(f"Found {len(data)} features in tile")
-            for feature in data:
-                image_data = get_image_and_detection_data(feature['id'])
-                if image_data:
-                    feature['image_data'] = image_data
             features.extend(data)
     
     st.write(f"Total features found: {len(features)}")
@@ -163,7 +79,7 @@ if st_map is not None and 'all_drawings' in st_map:
 
 # Add a button to start the search
 if st.session_state.get('polygon_drawn', False):
-    if st.button("Search for features and generate zip"):
+    if st.button("Search for features and get image URLs"):
         last_draw = st.session_state['last_draw']
         # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
@@ -174,69 +90,34 @@ if st.session_state.get('polygon_drawn', False):
         
         st.success(f"Found {len(features)} features in the selected area.")
 
-        # Create zip files for original images and images with detections
-        original_zip_buffer = io.BytesIO()
-        detection_zip_buffer = io.BytesIO()
-        
-        with zipfile.ZipFile(original_zip_buffer, 'w') as original_zip, \
-             zipfile.ZipFile(detection_zip_buffer, 'w') as detection_zip:
-            
-            for i, feature in enumerate(features):
-                image_data = feature.get('image_data')
-                if image_data:
-                    jpeg_url = image_data.get('jpeg_url')
-                    detections = image_data.get('detections', [])
-                    
-                    if jpeg_url and jpeg_url != '#':
-                        # Add original image to zip
-                        try:
-                            response = requests.get(jpeg_url)
-                            response.raise_for_status()
-                            original_zip.writestr(f"original_feature_{i+1}.jpg", response.content)
-                            st.write(f"Added original image for feature {i+1} to zip file")
-                        except requests.RequestException as e:
-                            st.write(f"Error fetching original image for feature {i+1}: {e}")
-                        
-                        # Draw detections on image and add to detection zip
-                        img_buf = draw_detections_on_image(jpeg_url, detections)
-                        if img_buf:
-                            detection_zip.writestr(f"detection_feature_{i+1}.png", img_buf.getvalue())
-                            st.write(f"Added image with detections for feature {i+1} to zip file")
-                        else:
-                            st.write(f"Failed to process image with detections for feature {i+1}")
-                    else:
-                        st.write(f"No valid JPEG URL for feature {i+1}")
-                else:
-                    st.write(f"No image data for feature {i+1}")
+        # Get image URLs for each feature
+        image_urls = []
+        for i, feature in enumerate(features):
+            feature_id = feature['id']
+            image_url = get_image_url(feature_id)
+            if image_url:
+                image_urls.append(f"Feature {i+1} ({feature_id}): {image_url}")
+            else:
+                image_urls.append(f"Feature {i+1} ({feature_id}): No image URL found")
 
-        # Offer the zip files for download
-        original_zip_buffer.seek(0)
-        detection_zip_buffer.seek(0)
-        original_zip_size = original_zip_buffer.getbuffer().nbytes
-        detection_zip_size = detection_zip_buffer.getbuffer().nbytes
-        
-        st.write(f"Original images zip file size: {original_zip_size} bytes")
-        st.write(f"Images with detections zip file size: {detection_zip_size} bytes")
-        
-        if original_zip_size > 0:
-            st.download_button(
-                label="Download Original Images",
-                data=original_zip_buffer,
-                file_name="mapillary_original_images.zip",
-                mime="application/zip"
-            )
-        else:
-            st.error("No original images were processed. The zip file is empty.")
-        
-        if detection_zip_size > 0:
-            st.download_button(
-                label="Download Images with Detections",
-                data=detection_zip_buffer,
-                file_name="mapillary_images_with_detections.zip",
-                mime="application/zip"
-            )
-        else:
-            st.error("No images with detections were processed. The zip file is empty.")
+        # Display image URLs
+        st.subheader("Image URLs:")
+        for url in image_urls:
+            st.write(url)
+
+        # Create a text file with image URLs
+        url_text = "\n".join(image_urls)
+        url_file = io.StringIO()
+        url_file.write(url_text)
+        url_file.seek(0)
+
+        # Offer the text file for download
+        st.download_button(
+            label="Download Image URLs",
+            data=url_file,
+            file_name="mapillary_image_urls.txt",
+            mime="text/plain"
+        )
 
 else:
-    st.write("Draw a polygon on the map, then click the search button to generate zip files with feature images.")
+    st.write("Draw a polygon on the map, then click the search button to get image URLs.")
