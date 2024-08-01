@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+import httpx
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import shape
@@ -15,8 +15,6 @@ mly_key = st.secrets["mly_key"]
 arcgis_username = st.secrets["arcgis_username"]
 arcgis_password = st.secrets["arcgis_password"]
 
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
 # Initialize the Streamlit app
 st.title("Mapillary Feature Explorer")
 
@@ -29,7 +27,6 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
-# Function to get symbol URL for a feature
 def get_symbol_url(object_value):
     signs_base_url = "https://raw.githubusercontent.com/mapillary/mapillary_sprite_source/master/package_signs/"
     objects_base_url = "https://raw.githubusercontent.com/mapillary/mapillary_sprite_source/master/package_objects/"
@@ -37,17 +34,17 @@ def get_symbol_url(object_value):
     sign_url = f"{signs_base_url}{object_value}.svg"
     object_url = f"{objects_base_url}{object_value}.svg"
     
-    response = requests.head(sign_url, verify=False)
-    if response.status_code == 200:
-        return sign_url
-    
-    response = requests.head(object_url, verify=False)
-    if response.status_code == 200:
-        return object_url
+    with httpx.Client() as client:
+        response = client.head(sign_url)
+        if response.status_code == 200:
+            return sign_url
+        
+        response = client.head(object_url)
+        if response.status_code == 200:
+            return object_url
     
     return None
 
-# Function to get features within a bounding box
 def get_features_within_bbox(bbox, max_retries=3, delay=1):
     west, south, east, north = bbox
     tiles = list(mercantile.tiles(west, south, east, north, 18))
@@ -55,64 +52,27 @@ def get_features_within_bbox(bbox, max_retries=3, delay=1):
     
     features = []
     
-    for bbox in bbox_list:
-        bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
-        url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.get(url, timeout=10, verify=False)  # Note the verify=False parameter
-                response.raise_for_status()
-                data = response.json().get('data', [])
-                for feature in data:
-                    feature['symbol_url'] = get_symbol_url(feature['object_value'])
-                features.extend(data)
-                break
-            except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
-                    st.error(f"Failed to fetch features after {max_retries} attempts: {str(e)}")
-                else:
-                    time.sleep(delay)
+    with httpx.Client() as client:
+        for bbox in bbox_list:
+            bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
+            url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
+            
+            for attempt in range(max_retries):
+                try:
+                    response = client.get(url, timeout=10)
+                    response.raise_for_status()
+                    data = response.json().get('data', [])
+                    for feature in data:
+                        feature['symbol_url'] = get_symbol_url(feature['object_value'])
+                    features.extend(data)
+                    break
+                except httpx.RequestError as e:
+                    if attempt == max_retries - 1:
+                        st.error(f"Failed to fetch features after {max_retries} attempts: {str(e)}")
+                    else:
+                        time.sleep(delay)
     
     return features
-    
-def prepare_features_for_arcgis(features):
-    geojson_features = []
-    for feature in features:
-        geojson_feature = {
-            "type": "Feature",
-            "geometry": feature['geometry'],
-            "properties": {
-                "object_value": feature['object_value'],
-                "symbol_url": feature['symbol_url']
-            }
-        }
-        geojson_features.append(geojson_feature)
-    return {
-        "type": "FeatureCollection",
-        "features": geojson_features
-    }
-
-def create_unique_value_renderer(features):
-    unique_values = []
-    for feature in features:
-        symbol_url = feature.get('symbol_url')
-        if symbol_url:
-            unique_values.append({
-                "value": feature['object_value'],
-                "symbol": {
-                    "type": "picture-marker",
-                    "url": symbol_url,
-                    "width": "24px",
-                    "height": "24px"
-                }
-            })
-    
-    return {
-        "type": "unique-value",
-        "field": "object_value",
-        "uniqueValueInfos": unique_values
-    }
 
 # Display the map
 st_map = st_folium(st.session_state['map'], width=700, height=500)
@@ -147,14 +107,25 @@ if st.button("Search for features and upload to ArcGIS Online"):
             st.write("Creating webmap...")
 
             # Prepare features for ArcGIS
-            geojson_data = prepare_features_for_arcgis(features)
+            geojson_data = {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": feature['geometry'],
+                        "properties": {
+                            "object_value": feature['object_value'],
+                            "symbol_url": feature['symbol_url']
+                        }
+                    } for feature in features
+                ]
+            }
 
             # Create a single layer with all features
             fs = FeatureSet.from_geojson(geojson_data)
-            unique_value_renderer = create_unique_value_renderer(features)
             webmap.add_layer(fs, {
                 "title": "Mapillary Features",
-                "renderer": unique_value_renderer
+                "renderer": "simple"  # You might want to customize this based on your needs
             })
 
             # Save web map
@@ -181,8 +152,7 @@ if st.button("Search for features and upload to ArcGIS Online"):
 
             # Add markers to the Streamlit map
             for feature in features:
-                geom = feature['geometry']
-                coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
+                coords = feature['geometry']['coordinates'][::-1]  # Reverse lat/lon for folium
                 popup_content = f"""
                 ID: {feature['id']}<br>
                 Value: {feature['object_value']}<br>
@@ -197,15 +167,6 @@ if st.button("Search for features and upload to ArcGIS Online"):
             st.write("No features found within the drawn polygon.")
     else:
         st.write("Please draw a polygon on the map first.")
-
-# The zip creation part is commented out for now
-# if st.session_state['zip_buffer'] is not None:
-#     st.download_button(
-#         label="Download Images and Symbols",
-#         data=st.session_state['zip_buffer'],
-#         file_name="mapillary_images_and_symbols.zip",
-#         mime="application/zip"
-#     )
 
 else:
     st.write("Draw a polygon on the map, then click the search button to see features and upload to ArcGIS Online.")
