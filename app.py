@@ -15,6 +15,8 @@ mly_key = st.secrets["mly_key"]
 arcgis_username = st.secrets["arcgis_username"]
 arcgis_password = st.secrets["arcgis_password"]
 
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 # Initialize the Streamlit app
 st.title("Mapillary Feature Explorer")
 
@@ -35,11 +37,11 @@ def get_symbol_url(object_value):
     sign_url = f"{signs_base_url}{object_value}.svg"
     object_url = f"{objects_base_url}{object_value}.svg"
     
-    response = requests.head(sign_url)
+    response = requests.head(sign_url, verify=False)
     if response.status_code == 200:
         return sign_url
     
-    response = requests.head(object_url)
+    response = requests.head(object_url, verify=False)
     if response.status_code == 200:
         return object_url
     
@@ -59,7 +61,7 @@ def get_features_within_bbox(bbox, max_retries=3, delay=1):
         
         for attempt in range(max_retries):
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, timeout=10, verify=False)  # Note the verify=False parameter
                 response.raise_for_status()
                 data = response.json().get('data', [])
                 for feature in data:
@@ -73,7 +75,7 @@ def get_features_within_bbox(bbox, max_retries=3, delay=1):
                     time.sleep(delay)
     
     return features
-
+    
 def prepare_features_for_arcgis(features):
     geojson_features = []
     for feature in features:
