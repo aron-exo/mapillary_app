@@ -7,3 +7,4 @@ mercantile
 mapbox_vector_tile
 matplotlib
 arcgis
+httpx
