@@ -129,13 +129,13 @@ if st.session_state.get('polygon_drawn', False):
         st_folium(st.session_state['map'], width=700, height=500)
 
 # Display the download button if zip_buffer exists
-if st.session_state['zip_buffer'] is not None:
-    st.download_button(
-        label="Download Images",
-        data=st.session_state['zip_buffer'],
-        file_name="mapillary_images.zip",
-        mime="application/zip"
-    )
+#if st.session_state['zip_buffer'] is not None:
+   # st.download_button(
+   #     label="Download Images",
+    #    data=st.session_state['zip_buffer'],
+    #    file_name="mapillary_images.zip",
+    #    mime="application/zip"
+ #   )
 
-else:
-    st.write("Draw a polygon on the map, then click the search button to download images and see features.")
+#else:
+  #  st.write("Draw a polygon on the map, then click the search button to download images and see features.")
