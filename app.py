@@ -86,8 +86,10 @@ if st_map is not None and 'all_drawings' in st_map:
     else:
         st.session_state['polygon_drawn'] = False
 
+# ... (previous code remains the same)
+
 # Add a button to start the search
-if st.button("Search for features and upload to ArcGIS Online"):
+if st.button("Search for features and create map"):
     if st.session_state.get('polygon_drawn', False):
         last_draw = st.session_state['last_draw']
         geom = shape(last_draw['geometry'])
@@ -99,56 +101,61 @@ if st.button("Search for features and upload to ArcGIS Online"):
         if features:
             st.success(f"Found {len(features)} features in the selected area.")
 
-            # Initialize ArcGIS GIS
-            gis = GIS("https://www.arcgis.com", st.secrets["arcgis_username"], st.secrets["arcgis_password"])
-            st.write("Initializing GIS...")
+            try:
+                # Initialize ArcGIS GIS
+                gis = GIS("https://www.arcgis.com", arcgis_username, arcgis_password)
+                st.write("Initializing GIS...")
 
-            webmap = WebMap()
-            st.write("Creating webmap...")
+                webmap = WebMap()
+                st.write("Creating webmap...")
 
-            # Prepare features for ArcGIS
-            geojson_data = {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "geometry": feature['geometry'],
-                        "properties": {
-                            "object_value": feature['object_value'],
-                            "symbol_url": feature['symbol_url']
-                        }
-                    } for feature in features
-                ]
-            }
-
-            # Create a single layer with all features
-            fs = FeatureSet.from_geojson(geojson_data)
-            webmap.add_layer(fs, {
-                "title": "Mapillary Features",
-                "renderer": "simple"  # You might want to customize this based on your needs
-            })
-
-            # Save web map
-            webmap_properties = {
-                "title": "Mapillary Features Web Map",
-                "snippet": "A web map showing Mapillary features with their symbols",
-                "tags": ["Mapillary", "GeoJSON", "Web Map"],
-                "extent": {
-                    "spatialReference": {"wkid": 4326},
-                    "xmin": bounds[0],
-                    "ymin": bounds[1],
-                    "xmax": bounds[2],
-                    "ymax": bounds[3]
+                # Prepare features for ArcGIS
+                geojson_data = {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": feature['geometry'],
+                            "properties": {
+                                "object_value": feature['object_value'],
+                                "symbol_url": feature['symbol_url']
+                            }
+                        } for feature in features
+                    ]
                 }
-            }
 
-            st.write("Saving webmap...")
-            webmap_item = webmap.save(item_properties=webmap_properties)
-            webmap_item.share(everyone=True)
+                # Create a single layer with all features
+                fs = FeatureSet.from_geojson(geojson_data)
+                webmap.add_layer(fs, {
+                    "title": "Mapillary Features",
+                    "renderer": "simple"  # You might want to customize this based on your needs
+                })
 
-            webmap_url = f"https://www.arcgis.com/apps/mapviewer/index.html?webmap={webmap_item.id}"
-            st.success(f"Web map saved and made public. [View the web map]({webmap_url})")
-            st.success(f"Web map saved with ID: {webmap_item.id}")
+                # Save web map
+                webmap_properties = {
+                    "title": "Mapillary Features Web Map",
+                    "snippet": "A web map showing Mapillary features with their symbols",
+                    "tags": ["Mapillary", "GeoJSON", "Web Map"],
+                    "extent": {
+                        "spatialReference": {"wkid": 4326},
+                        "xmin": bounds[0],
+                        "ymin": bounds[1],
+                        "xmax": bounds[2],
+                        "ymax": bounds[3]
+                    }
+                }
+
+                st.write("Saving webmap...")
+                webmap_item = webmap.save(item_properties=webmap_properties)
+                webmap_item.share(everyone=True)
+
+                webmap_url = f"https://www.arcgis.com/apps/mapviewer/index.html?webmap={webmap_item.id}"
+                st.success(f"Web map saved and made public. [View the web map]({webmap_url})")
+                st.success(f"Web map saved with ID: {webmap_item.id}")
+
+            except Exception as e:
+                st.error(f"Failed to create ArcGIS web map: {str(e)}")
+                st.write("Displaying features on Streamlit map instead.")
 
             # Add markers to the Streamlit map
             for feature in features:
@@ -169,4 +176,4 @@ if st.button("Search for features and upload to ArcGIS Online"):
         st.write("Please draw a polygon on the map first.")
 
 else:
-    st.write("Draw a polygon on the map, then click the search button to see features and upload to ArcGIS Online.")
+    st.write("Draw a polygon on the map, then click the search button to see features and create a map.")
