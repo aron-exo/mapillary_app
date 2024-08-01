@@ -111,7 +111,7 @@ if st.session_state.get('polygon_drawn', False):
         st.success(f"Found {len(features)} features in the selected area.")
 
         # Create zip file with images
-        st.session_state['zip_buffer'] = create_image_zip(features)
+#        st.session_state['zip_buffer'] = create_image_zip(features)
 
         # Display features and add markers to the map
         for feature in features:
