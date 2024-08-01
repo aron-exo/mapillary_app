@@ -100,7 +100,7 @@ if st.button("Search for features and upload to ArcGIS Online"):
             st.success(f"Found {len(features)} features in the selected area.")
 
             # Initialize ArcGIS GIS
-            gis = GIS("https://www.arcgis.com", arcgis_username, arcgis_password)
+            gis = GIS("https://www.arcgis.com", st.secrets["arcgis_username"], st.secrets["arcgis_password"])
             st.write("Initializing GIS...")
 
             webmap = WebMap()
