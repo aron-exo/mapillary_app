@@ -16,6 +16,7 @@ arcgis_username = st.secrets["arcgis_username"]
 arcgis_password = st.secrets["arcgis_password"]
 st.write(arcgis_username)
 st.write(arcgis_password)
+st.write("hello")
 # Initialize the Streamlit app
 st.title("Mapillary Feature Explorer")
 
