@@ -8,6 +8,7 @@ import json
 from arcgis.gis import GIS
 from arcgis.mapping import WebMap
 from arcgis.features import FeatureSet
+import time
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -45,7 +46,7 @@ def get_symbol_url(object_value):
     return None
 
 # Function to get features within a bounding box
-def get_features_within_bbox(bbox):
+def get_features_within_bbox(bbox, max_retries=3, delay=1):
     west, south, east, north = bbox
     tiles = list(mercantile.tiles(west, south, east, north, 18))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
@@ -55,12 +56,21 @@ def get_features_within_bbox(bbox):
     for bbox in bbox_list:
         bbox_str = f'{bbox.west},{bbox.south},{bbox.east},{bbox.north}'
         url = f'https://graph.mapillary.com/map_features?access_token={mly_key}&fields=id,object_value,geometry&bbox={bbox_str}'
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json().get('data', [])
-            for feature in data:
-                feature['symbol_url'] = get_symbol_url(feature['object_value'])
-                features.append(feature)
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                data = response.json().get('data', [])
+                for feature in data:
+                    feature['symbol_url'] = get_symbol_url(feature['object_value'])
+                features.extend(data)
+                break
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    st.error(f"Failed to fetch features after {max_retries} attempts: {str(e)}")
+                else:
+                    time.sleep(delay)
     
     return features
 
@@ -118,12 +128,11 @@ if st_map is not None and 'all_drawings' in st_map:
 if st.button("Search for features and upload to ArcGIS Online"):
     if st.session_state.get('polygon_drawn', False):
         last_draw = st.session_state['last_draw']
-        # Extract coordinates from drawn polygon
         geom = shape(last_draw['geometry'])
         bounds = geom.bounds  # (minx, miny, maxx, maxy)
         
-        # Get features within the bounding box
-        features = get_features_within_bbox(bounds)
+        with st.spinner('Fetching features...'):
+            features = get_features_within_bbox(bounds)
         
         if features:
             st.success(f"Found {len(features)} features in the selected area.")
