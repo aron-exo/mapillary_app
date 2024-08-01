@@ -23,8 +23,8 @@ if 'map' not in st.session_state:
 if 'features' not in st.session_state:
     st.session_state['features'] = []
 
-if 'zip_buffer' not in st.session_state:
-    st.session_state['zip_buffer'] = None
+#if 'zip_buffer' not in st.session_state:
+  #  st.session_state['zip_buffer'] = None
 
 # Function to get image URL for a feature
 def get_image_url(feature_id):
