@@ -150,7 +150,7 @@ if st.session_state.get('polygon_drawn', False):
        # st.session_state['zip_buffer'] = create_image_zip(features)
 
         # Display features and add markers to the map
-        for feature in features:
+               for feature in features:
             geom = feature['geometry']
             coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
             image_url = feature.get('image_url', '#')
@@ -161,7 +161,22 @@ if st.session_state.get('polygon_drawn', False):
             <a href="{image_url}" target="_blank">View Image</a><br>
             <a href="{symbol_url}" target="_blank">View Symbol</a>
             """
-            folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
+            if symbol_url:
+                icon = CustomIcon(
+                    icon_image=symbol_url,
+                    icon_size=(30, 30),
+                    icon_anchor=(15, 15),
+                )
+                folium.Marker(
+                    location=coords,
+                    popup=popup_content,
+                    icon=icon
+                ).add_to(st.session_state['map'])
+            else:
+                folium.Marker(
+                    location=coords,
+                    popup=popup_content
+                ).add_to(st.session_state['map'])
         
         # Display the updated map
         st_folium(st.session_state['map'], width=700, height=500)
