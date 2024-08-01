@@ -14,7 +14,8 @@ import time
 mly_key = st.secrets["mly_key"]
 arcgis_username = st.secrets["arcgis_username"]
 arcgis_password = st.secrets["arcgis_password"]
-
+st.write(arcgis_username)
+st.write(arcgis_password)
 # Initialize the Streamlit app
 st.title("Mapillary Feature Explorer")
 
@@ -100,7 +101,7 @@ if st.button("Search for features and create map"):
         
         if features:
             st.success(f"Found {len(features)} features in the selected area.")
-
+    
             try:
                 # Initialize ArcGIS GIS
                 gis = GIS("https://www.arcgis.com", arcgis_username, arcgis_password)
