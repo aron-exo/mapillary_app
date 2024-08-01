@@ -43,7 +43,7 @@ def get_image_url(feature_id):
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
     west, south, east, north = bbox
-    tiles = list(mercantile.tiles(west, south, east, north, 21))
+    tiles = list(mercantile.tiles(west, south, east, north, 22))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
     
     features = []
