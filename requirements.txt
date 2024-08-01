@@ -6,3 +6,4 @@ shapely
 mercantile
 mapbox_vector_tile
 matplotlib
+arcgis
