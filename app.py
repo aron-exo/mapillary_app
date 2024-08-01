@@ -6,6 +6,7 @@ from shapely.geometry import shape
 import mercantile
 import io
 import zipfile
+from folium import CustomIcon
 
 # Mapillary access token
 mly_key = st.secrets["mly_key"]
@@ -180,7 +181,7 @@ if st.session_state.get('polygon_drawn', False):
         
         # Display the updated map
         st_folium(st.session_state['map'], width=700, height=500)
-
+        
 # Display the download button if zip_buffer exists
 #if st.session_state['zip_buffer'] is not None:
     #st.download_button(
