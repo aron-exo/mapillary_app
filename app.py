@@ -40,6 +40,24 @@ def get_image_url(feature_id):
                 return image_data.get('thumb_original_url')
     return None
 
+# Function to get symbol URL for a feature
+def get_symbol_url(object_value):
+    signs_base_url = "https://raw.githubusercontent.com/mapillary/mapillary_sprite_source/master/package_signs/"
+    objects_base_url = "https://raw.githubusercontent.com/mapillary/mapillary_sprite_source/master/package_objects/"
+    
+    sign_url = f"{signs_base_url}{object_value}.svg"
+    object_url = f"{objects_base_url}{object_value}.svg"
+    
+    response = requests.head(sign_url)
+    if response.status_code == 200:
+        return sign_url
+    
+    response = requests.head(object_url)
+    if response.status_code == 200:
+        return object_url
+    
+    return None
+
 # Function to get features within a bounding box
 def get_features_within_bbox(bbox):
     west, south, east, north = bbox
@@ -56,6 +74,7 @@ def get_features_within_bbox(bbox):
             data = response.json().get('data', [])
             for feature in data:
                 feature['image_url'] = get_image_url(feature['id'])
+                feature['symbol_url'] = get_symbol_url(feature['object_value'])
             features.extend(data)
     
     return features
@@ -66,6 +85,8 @@ def create_image_zip(features):
     with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
         for i, feature in enumerate(features):
             image_url = feature.get('image_url')
+            symbol_url = feature.get('symbol_url')
+            
             if image_url:
                 try:
                     response = requests.get(image_url)
@@ -80,6 +101,21 @@ def create_image_zip(features):
                     st.write(f"Error downloading image for feature {i+1} ({feature['id']}): {str(e)}")
             else:
                 st.write(f"No image URL for feature {i+1} ({feature['id']})")
+            
+            if symbol_url:
+                try:
+                    response = requests.get(symbol_url)
+                    if response.status_code == 200:
+                        symbol_data = response.content
+                        file_name = f"symbol_{i+1}_{feature['id']}.svg"
+                        zip_file.writestr(file_name, symbol_data)
+                        st.write(f"Added {file_name} to zip")
+                    else:
+                        st.write(f"Failed to download symbol for feature {i+1} ({feature['id']})")
+                except Exception as e:
+                    st.write(f"Error downloading symbol for feature {i+1} ({feature['id']}): {str(e)}")
+            else:
+                st.write(f"No symbol URL for feature {i+1} ({feature['id']})")
     
     zip_buffer.seek(0)
     return zip_buffer
@@ -110,18 +146,20 @@ if st.session_state.get('polygon_drawn', False):
         st.session_state['features'] = features
         st.success(f"Found {len(features)} features in the selected area.")
 
-        # Create zip file with images
-#        st.session_state['zip_buffer'] = create_image_zip(features)
+        # Create zip file with images and symbols
+       # st.session_state['zip_buffer'] = create_image_zip(features)
 
         # Display features and add markers to the map
         for feature in features:
             geom = feature['geometry']
             coords = geom['coordinates'][::-1]  # Reverse lat/lon for folium
             image_url = feature.get('image_url', '#')
+            symbol_url = feature.get('symbol_url', '#')
             popup_content = f"""
             ID: {feature['id']}<br>
             Value: {feature['object_value']}<br>
-            <a href="{image_url}" target="_blank">View Image</a>
+            <a href="{image_url}" target="_blank">View Image</a><br>
+            <a href="{symbol_url}" target="_blank">View Symbol</a>
             """
             folium.Marker(location=coords, popup=popup_content).add_to(st.session_state['map'])
         
@@ -130,12 +168,12 @@ if st.session_state.get('polygon_drawn', False):
 
 # Display the download button if zip_buffer exists
 #if st.session_state['zip_buffer'] is not None:
-   # st.download_button(
-   #     label="Download Images",
-    #    data=st.session_state['zip_buffer'],
-    #    file_name="mapillary_images.zip",
-    #    mime="application/zip"
- #   )
+    #st.download_button(
+     #   label="Download Images and Symbols",
+      #  data=st.session_state['zip_buffer'],
+      #  file_name="mapillary_images_and_symbols.zip",
+      #  mime="application/zip"
+   # )
 
-#else:
-  #  st.write("Draw a polygon on the map, then click the search button to download images and see features.")
+else:
+    st.write("Draw a polygon on the map, then click the search button to download images and symbols and see features.")
