@@ -47,7 +47,7 @@ def get_symbol_url(object_value):
 
 def get_features_within_bbox(bbox, max_retries=3, delay=1):
     west, south, east, north = bbox
-    tiles = list(mercantile.tiles(west, south, east, north, 18))
+    tiles = list(mercantile.tiles(west, south, east, north, 22))
     bbox_list = [mercantile.bounds(tile.x, tile.y, tile.z) for tile in tiles]
     
     features = []
